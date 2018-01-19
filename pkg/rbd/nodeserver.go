@@ -62,7 +62,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if !notMnt {
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
-	volOptions, err := getRBDVolumeOptions(req.VolumeAttributes)
+	volOptions, err := getRBDVolumeOptions(req.UserCredentials, req.VolumeAttributes)
 	if err != nil {
 		return nil, err
 	}

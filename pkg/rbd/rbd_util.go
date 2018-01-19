@@ -45,13 +45,13 @@ const (
 )
 
 type rbdVolumeOptions struct {
+	adminID       string
+	adminSecret   string
+	userID        string
+	userSecret    string
 	VolName       string   `json:"volName"`
 	Monitors      string   `json:"monitors"`
 	Pool          string   `json:"pool"`
-	AdminID       string   `json:"adminID"`
-	AdminSecret   string   `json:"adminSecret"`
-	UserID        string   `json:"userID"`
-	UserSecret    string   `json:"userSecret"`
 	ImageFormat   string   `json:"imageFormat"`
 	ImageFeatures []string `json:"imageFeatures"`
 }
@@ -69,11 +69,11 @@ func createRBDImage(pOpts *rbdVolumeOptions, volSz int) error {
 	volSzGB := fmt.Sprintf("%dG", volSz)
 
 	if pOpts.ImageFormat == rbdImageFormat2 {
-		glog.V(4).Infof("rbd: create %s size %s format %s (features: %s) using mon %s, pool %s id %s key %s", image, volSzGB, pOpts.ImageFormat, pOpts.ImageFeatures, mon, pOpts.Pool, pOpts.AdminID, pOpts.AdminSecret)
+		glog.V(4).Infof("rbd: create %s size %s format %s (features: %s) using mon %s, pool %s id %s key %s", image, volSzGB, pOpts.ImageFormat, pOpts.ImageFeatures, mon, pOpts.Pool, pOpts.adminID, pOpts.adminSecret)
 	} else {
-		glog.V(4).Infof("rbd: create %s size %s format %s using mon %s, pool %s id %s key %s", image, volSzGB, pOpts.ImageFormat, mon, pOpts.Pool, pOpts.AdminID, pOpts.AdminSecret)
+		glog.V(4).Infof("rbd: create %s size %s format %s using mon %s, pool %s id %s key %s", image, volSzGB, pOpts.ImageFormat, mon, pOpts.Pool, pOpts.adminID, pOpts.adminSecret)
 	}
-	args := []string{"create", image, "--size", volSzGB, "--pool", pOpts.Pool, "--id", pOpts.AdminID, "-m", mon, "--key=" + pOpts.AdminSecret, "--image-format", pOpts.ImageFormat}
+	args := []string{"create", image, "--size", volSzGB, "--pool", pOpts.Pool, "--id", pOpts.adminID, "-m", mon, "--key=" + pOpts.adminSecret, "--image-format", pOpts.ImageFormat}
 	if pOpts.ImageFormat == rbdImageFormat2 {
 		// if no image features is provided, it results in empty string
 		// which disable all RBD image format 2 features as we expected
@@ -98,11 +98,11 @@ func rbdStatus(b *rbdVolumeOptions) (bool, string, error) {
 
 	image := b.VolName
 	// If we don't have admin id/secret (e.g. attaching), fallback to user id/secret.
-	id := b.AdminID
-	secret := b.AdminSecret
+	id := b.adminID
+	secret := b.adminSecret
 	if id == "" {
-		id = b.UserID
-		secret = b.UserSecret
+		id = b.userID
+		secret = b.userSecret
 	}
 
 	glog.V(4).Infof("rbd: status %s using mon %s, pool %s id %s key %s", image, b.Monitors, b.Pool, id, secret)
@@ -144,11 +144,11 @@ func deleteRBDImage(b *rbdVolumeOptions) error {
 		glog.Info("rbd is still being used ", image)
 		return fmt.Errorf("rbd %s is still being used", image)
 	}
-	id := b.AdminID
-	secret := b.AdminSecret
+	id := b.adminID
+	secret := b.adminSecret
 	if id == "" {
-		id = b.UserID
-		secret = b.UserSecret
+		id = b.userID
+		secret = b.userSecret
 	}
 
 	glog.V(4).Infof("rbd: rm %s using mon %s, pool %s id %s key %s", image, b.Monitors, b.Pool, id, secret)
@@ -166,17 +166,12 @@ func execCommand(command string, args []string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-func getRBDVolumeOptions(volOptions map[string]string) (*rbdVolumeOptions, error) {
-	rbdVolume := &rbdVolumeOptions{}
+func getRBDVolumeOptions(cred, volOptions map[string]string) (*rbdVolumeOptions, error) {
+	rbdVolume, err := getRBDCredentials(cred)
+	if err != nil {
+		return nil, err
+	}
 	var ok bool
-	rbdVolume.AdminID, ok = volOptions["adminID"]
-	if !ok {
-		return nil, fmt.Errorf("Missing required parameter adminID")
-	}
-	rbdVolume.AdminSecret, ok = volOptions["adminSecret"]
-	if !ok {
-		return nil, fmt.Errorf("Missing required parameter adminSecret")
-	}
 	rbdVolume.Pool, ok = volOptions["pool"]
 	if !ok {
 		return nil, fmt.Errorf("Missing required parameter pool")
@@ -185,17 +180,32 @@ func getRBDVolumeOptions(volOptions map[string]string) (*rbdVolumeOptions, error
 	if !ok {
 		return nil, fmt.Errorf("Missing required parameter monitors")
 	}
-	rbdVolume.UserID, ok = volOptions["userID"]
-	if !ok {
-		return nil, fmt.Errorf("Missing required parameter userID")
-	}
-	rbdVolume.UserSecret, ok = volOptions["userSecret"]
-	if !ok {
-		return nil, fmt.Errorf("Missing required parameter userSecret")
-	}
 	rbdVolume.ImageFormat, ok = volOptions["imageFormat"]
 	if !ok {
 		rbdVolume.ImageFormat = "2"
+	}
+
+	return rbdVolume, nil
+}
+
+func getRBDCredentials(cred map[string]string) (*rbdVolumeOptions, error) {
+	rbdVolume := &rbdVolumeOptions{}
+	var ok bool
+	rbdVolume.adminID, ok = cred["adminID"]
+	if !ok {
+		return nil, fmt.Errorf("Missing required parameter adminID")
+	}
+	rbdVolume.adminSecret, ok = cred["adminSecret"]
+	if !ok {
+		return nil, fmt.Errorf("Missing required parameter adminSecret")
+	}
+	rbdVolume.userID, ok = cred["userID"]
+	if !ok {
+		return nil, fmt.Errorf("Missing required parameter userID")
+	}
+	rbdVolume.userSecret, ok = cred["userSecret"]
+	if !ok {
+		return nil, fmt.Errorf("Missing required parameter userSecret")
 	}
 
 	return rbdVolume, nil
@@ -238,8 +248,8 @@ func attachRBDImage(volOptions *rbdVolumeOptions) (string, error) {
 		}
 
 		glog.V(1).Infof("rbd: map mon %s", volOptions.Monitors)
-		id := volOptions.UserID
-		secret := volOptions.UserSecret
+		id := volOptions.userID
+		secret := volOptions.userSecret
 
 		output, err = execCommand("rbd", []string{
 			"map", image, "--pool", volOptions.Pool, "--id", id, "-m", volOptions.Monitors, "--key=" + secret})
@@ -262,8 +272,8 @@ func detachRBDImage(volOptions *rbdVolumeOptions) error {
 
 	image := volOptions.VolName
 	glog.V(1).Infof("rbd: unmap device %s", image)
-	id := volOptions.UserID
-	secret := volOptions.UserSecret
+	id := volOptions.userID
+	secret := volOptions.userSecret
 
 	output, err = execCommand("rbd", []string{
 		"unmap", image, "--id", id, "--key=" + secret})

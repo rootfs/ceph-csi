@@ -46,7 +46,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
-	volOptions, err := getRBDVolumeOptions(req.GetParameters())
+	volOptions, err := getRBDVolumeOptions(req.GetUserCredentials(), req.GetParameters())
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,12 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 
 	// For now the image get unconditionally deleted, but here retention policy can be checked
 	volumeID := req.GetVolumeId()
-	volOptions := &rbdVolumeOptions{}
+	// get credentials
+	volOptions, err := getRBDCredentials(req.GetUserCredentials())
+	if err != nil {
+		return nil, err
+	}
+
 	if err := loadVolInfo(volumeID, path.Join(PluginFolder, "controller"), volOptions); err != nil {
 		return nil, err
 	}
