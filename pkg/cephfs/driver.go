@@ -19,7 +19,7 @@ package cephfs
 import (
 	"github.com/golang/glog"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/drivers/pkg/csi-common"
 
 	"github.com/ceph/ceph-csi/pkg/util"
