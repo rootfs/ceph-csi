@@ -48,7 +48,7 @@ type rbd struct {
 
 var (
 	rbdDriver *rbd
-	version   = "0.3.0"
+	version   = "1.0.0"
 )
 
 func GetRBDDriver() *rbd {
